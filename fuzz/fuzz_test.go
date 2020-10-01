@@ -23,3 +23,33 @@ func TestFuzzTwoNewAndUnion(t *testing.T) {
 	_, err = right.RunIterator()
 	require.EqualError(t, err, "decoding RLE: not minimally encoded: invalid encoding for RLE+ version 0", "right validate")
 }
+
+func TestFuzz(t *testing.T) {
+	var (
+		data = []byte(" @\x140000000\x14-0\xbf\xef\x940000")
+		args = make([]interface{}, 1, 9)
+	)
+
+	for line := 0; line < len(data); line += 16 {
+		args = args[:1]
+		args[0] = line
+
+		lineData := data[line:]
+
+		format := "%04d:"
+
+		for i := 0; i < 8; i++ {
+			if len(lineData) < 2 {
+				break
+			}
+
+			format += " %x"
+			args = append(args, lineData[:2])
+			lineData = lineData[2:]
+		}
+
+		t.Logf(format, args...)
+	}
+
+	FuzzTwoNewAndUnion(data)
+}
