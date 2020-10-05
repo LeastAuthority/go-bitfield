@@ -3,12 +3,23 @@
 package fuzz
 
 import (
+	//"encoding/hex"
+	"os"
 	"testing"
 
+	"net/http"
+	_ "net/http/pprof"
+
 	rleplus "github.com/filecoin-project/go-bitfield/rle"
-	//fleece "github.com/leastauthority/fleece/fuzzing"
+
+	"github.com/davecgh/go-spew/spew"
+	"github.com/leastauthority/fleece/fuzzing"
 	"github.com/stretchr/testify/require"
 )
+
+func init() {
+	go http.ListenAndServe(":12345", nil)
+}
 
 func TestFuzzTwoNewAndUnion(t *testing.T) {
 	left, err := rleplus.FromBuf([]byte{})
@@ -25,8 +36,10 @@ func TestFuzzTwoNewAndUnion(t *testing.T) {
 }
 
 func TestFuzz(t *testing.T) {
+
 	var (
-		data = []byte(" @\x140000000\x14-0\xbf\xef\x940000")
+		//data = []byte(" @\x140000000\x14-0\xbf\xef\x940000")
+		data = []byte("tee0q0n00%00000")
 		args = make([]interface{}, 1, 9)
 	)
 
@@ -51,5 +64,43 @@ func TestFuzz(t *testing.T) {
 		t.Logf(format, args...)
 	}
 
-	FuzzTwoNewAndUnion(data)
+	t.Run("toplevel", func(t *testing.T) {
+		FuzzTwoNewAndUnion(data)
+	})
+
+	t.Run("rle", func(t *testing.T) {
+		FuzzRLETwoNewAndUnion(data)
+	})
+}
+
+func TestFleece(t *testing.T) {
+	t.Log(os.Getwd())
+	env := fuzzing.NewEnv("../fleece")
+	ci := fuzzing.MustNewCrasherIterator(env, FuzzRLETwoNewAndUnion)
+	_, panics, _ := ci.TestFailingLimit(t, 100000000)
+	t.Log(panics)
+
+}
+
+func TestBitIterator(t *testing.T) {
+	runit := &rleplus.RunSliceIterator{
+		Runs: []rleplus.Run{
+			{Len: 1},
+			{Len: 550, Val: true},
+			{Len: 1},
+			{Len: 6, Val: true},
+			{Len: 1},
+			{Len: 6, Val: true},
+			{Len: 1},
+		},
+	}
+
+	spew.Dump(runit)
+
+	bitit, err := rleplus.BitsFromRuns(runit)
+	require.NoError(t, err, "bitfromruns")
+
+	for bitit.HasNext() {
+		t.Log(bitit.Next())
+	}
 }

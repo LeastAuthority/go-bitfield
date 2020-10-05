@@ -6,20 +6,11 @@ import (
 	"fmt"
 
 	"github.com/filecoin-project/go-bitfield"
-	rleplus "github.com/filecoin-project/go-bitfield/rle"
+	//"github.com/davecgh/go-spew/spew"
 	//"github.com/google/gofuzz"
 )
 
-func FuzzNewFromBytes(data []byte) int {
-	_, err := bitfield.NewFromBytes(data)
-	if err != nil {
-		return 0
-	}
-
-	return 1
-}
-
-func FuzzRLETwoNewAndIntersect(data []byte) int {
+func FuzzTwoNewAndUnion(data []byte) int {
 	if len(data) > 4*1024*1024 {
 		return -1
 	}
@@ -30,49 +21,44 @@ func FuzzRLETwoNewAndIntersect(data []byte) int {
 		dataRight = data[dataLen/2:]
 	)
 
-	left, err := rleplus.FromBuf(dataLeft)
+	//fmt.Println(dataLen)
+
+	left, err := bitfield.NewFromBytes(dataLeft)
 	if err != nil {
 		return 0
 	}
 
-	right, err := rleplus.FromBuf(dataRight)
+	right, err := bitfield.NewFromBytes(dataRight)
 	if err != nil {
 		return 0
 	}
 
-	leftRI, err := left.RunIterator()
+	//fmt.Println("right:")
+	//spew.Dump(right)
+
+	union, err := bitfield.MergeBitFields(left, right)
 	if err != nil {
 		return 0
 	}
 
-	rightRI, err := right.RunIterator()
+	uiter, err := union.BitIterator()
 	if err != nil {
-		return 0
+		panic("bititerator should not return an error (union)")
 	}
 
-	isectRI, err := rleplus.And(leftRI, rightRI)
-	if err != nil {
-		return 0
-	}
-
-	uiter, err := rleplus.BitsFromRuns(isectRI)
-	if err != nil {
-		panic("bititerator should not return an error (isect)")
-	}
-
-	liter, err := rleplus.BitsFromRuns(leftRI)
+	liter, err := left.BitIterator()
 	if err != nil {
 		panic("bititerator should not return an error (left)")
 	}
 
-	riter, err := rleplus.BitsFromRuns(rightRI)
+	riter, err := right.BitIterator()
 	if err != nil {
 		panic("bititerator should not return an error (right)")
 	}
 
 	var (
-		u, l, r      uint64
-		lDone, rDone bool
+		u, l, r      uint64 // offset of set bit
+		lDone, rDone bool   // has the iterator returned false for HasNext
 		found        bool
 	)
 
@@ -82,6 +68,7 @@ func FuzzRLETwoNewAndIntersect(data []byte) int {
 			panic("liter next should not return an error")
 		}
 	} else {
+		fmt.Println("l done from the start")
 		lDone = true
 	}
 
@@ -91,6 +78,7 @@ func FuzzRLETwoNewAndIntersect(data []byte) int {
 			panic("riter next should not return an error")
 		}
 	} else {
+		fmt.Println("r done from the start")
 		rDone = true
 	}
 
@@ -100,11 +88,15 @@ func FuzzRLETwoNewAndIntersect(data []byte) int {
 			panic("uiter next should not return an error")
 		}
 
+		//fmt.Println("u", u)
+		//fmt.Println("l", l, lDone)
+		//fmt.Println("r", r, rDone)
+
 		found = false
 
 		if !lDone {
 			if l < u {
-				panic(fmt.Sprintf("found element %d that is in left but not isect", l))
+				panic(fmt.Sprintf("found element %d that is in left but not union", l))
 			} else if l == u {
 				found = true
 				if liter.HasNext() {
@@ -113,6 +105,7 @@ func FuzzRLETwoNewAndIntersect(data []byte) int {
 						panic("liter next should not return an error")
 					}
 				} else {
+					fmt.Println("l done after", l)
 					lDone = true
 				}
 			}
@@ -120,7 +113,7 @@ func FuzzRLETwoNewAndIntersect(data []byte) int {
 
 		if !rDone {
 			if r < u {
-				panic(fmt.Sprintf("found element %d that is in right but not isect", r))
+				panic(fmt.Sprintf("found element %d that is in right but not union", r))
 			} else if r == u {
 				found = true
 				if riter.HasNext() {
@@ -129,39 +122,16 @@ func FuzzRLETwoNewAndIntersect(data []byte) int {
 						panic("riter next should not return an error")
 					}
 				} else {
+					fmt.Println("r done after", r)
 					rDone = true
 				}
 			}
 		}
 
 		if !found {
-			panic(fmt.Sprintf("element %d in isect found in neither left nor right", u))
+			panic(fmt.Sprintf("element %d in union found in neither left nor right", u))
 		}
 	}
 
 	return 1
 }
-
-func FuzzRLE_FromBuf(data []byte) int {
-	_, err := rleplus.FromBuf(data)
-	if err != nil {
-		return 0
-	}
-
-	return 1
-}
-
-/*
-func FuzzRLE_BitIterator(data []byte) int {
-	var (
-		runs []rleplus.Run
-	)
-	fuzz.NewFromGoFuzz(data).NilChance(0).NumElements(1, 20).Fuzz(&run)
-	runit := rleplus.RunSliceIterator{Runs: runs}
-	bitit, err := rleplus.BitsFromRuns(runit)
-
-	require.NoError(t, err, "bitsfromruns")
-	t.Log(bitit)
-
-}
-*/
